@@ -4,8 +4,8 @@ import { ToolLoopAgent, stepCountIs, tool } from "ai";
 import { createBashTool } from "bash-tool";
 import { z } from "zod";
 
+import { getBot } from "@/lib/chat";
 import { parseError } from "@/lib/error";
-import { getInstallationOctokit } from "@/lib/github";
 
 export interface AgentResult {
   errorMessage?: string;
@@ -45,41 +45,23 @@ Based on the user's request, decide what to do. Your capabilities include:
 - Be concise and actionable
 - End every reply with a line break, a horizontal rule, then: *Powered by [OpenReview](https://github.com/haydenbleasel/openreview)*`;
 
-const createReplyTool = (repoFullName: string, prNumber: number) => {
-  const [owner, repo] = repoFullName.split("/");
+const createReplyTool = (threadId: string) => {
+  const adapter = getBot().getAdapter("github");
 
   return tool({
     description:
       "Post a comment on the pull request. Use this to share your findings, ask questions, or report results.",
     execute: async ({ body }) => {
-      const octokit = await getInstallationOctokit();
-
-      await octokit.request(
-        "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
-        {
-          body,
-          headers: { "X-GitHub-Api-Version": "2022-11-28" },
-          issue_number: prNumber,
-          owner,
-          repo,
-        }
-      );
-
+      await adapter.postMessage(threadId, { markdown: body });
       return { success: true };
     },
     inputSchema: z.object({
-      body: z
-        .string()
-        .describe("The markdown-formatted comment body to post"),
+      body: z.string().describe("The markdown-formatted comment body to post"),
     }),
   });
 };
 
-const createAgent = async (
-  sandbox: Sandbox,
-  repoFullName: string,
-  prNumber: number
-) => {
+const createAgent = async (sandbox: Sandbox, threadId: string) => {
   const { tools: bashTools } = await createBashTool({ sandbox });
 
   return new ToolLoopAgent({
@@ -88,7 +70,7 @@ const createAgent = async (
     stopWhen: stepCountIs(20),
     tools: {
       ...bashTools,
-      reply: createReplyTool(repoFullName, prNumber),
+      reply: createReplyTool(threadId),
     },
   });
 };
@@ -97,8 +79,7 @@ export const runAgent = async (
   sandboxId: string,
   diff: string,
   comment: string,
-  repoFullName: string,
-  prNumber: number
+  threadId: string
 ): Promise<AgentResult> => {
   "use step";
 
@@ -109,7 +90,7 @@ export const runAgent = async (
   });
 
   try {
-    const agent = await createAgent(sandbox, repoFullName, prNumber);
+    const agent = await createAgent(sandbox, threadId);
 
     await agent.generate({
       prompt: `User request: ${comment}\n\nHere is the PR diff:\n\n\`\`\`diff\n${diff}\n\`\`\`\n\nHandle the user's request. Use the tools to explore files, run commands, or make changes as needed. Use the reply tool to post your response.`,

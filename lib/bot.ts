@@ -1,85 +1,55 @@
 import "server-only";
+import type { GitHubRawMessage } from "@chat-adapter/github";
+import type { Chat } from "chat";
 import { start } from "workflow/api";
 
-import { parseError } from "@/lib/error";
-import { getGitHubApp, getInstallationOctokit } from "@/lib/github";
-import { botWorkflow } from "@/lib/review";
+import { getBot } from "@/lib/chat";
+import { getInstallationOctokit } from "@/lib/github";
+import type { WorkflowParams } from "@/lib/review";
 
-const BOT_NAME = "openreview";
+let initialized = false;
 
-const shouldHandleComment = (payload: {
-  action: string;
-  comment: { body: string; user: { type: string } };
-  issue: { pull_request?: { url: string } };
-}): boolean => {
-  if (payload.action !== "created") {
-    return false;
-  }
-  if (payload.comment.user.type === "Bot") {
-    return false;
-  }
-  if (!payload.comment.body.toLowerCase().includes(`@${BOT_NAME}`)) {
-    return false;
-  }
-  if (!payload.issue.pull_request) {
-    return false;
-  }
-  return true;
-};
+const registerHandlers = (bot: Chat): void => {
+  bot.onNewMention(async (thread, message) => {
+    const raw = message.raw as GitHubRawMessage;
 
-const extractComment = (body: string): string => {
-  const mention = `@${BOT_NAME}`;
-  const index = body.toLowerCase().indexOf(mention);
+    const repoFullName = raw.repository.full_name;
+    const { prNumber } = raw;
+    const comment = message.text.trim() || "Review this pull request";
 
-  if (index === -1) {
-    return body.trim();
-  }
+    const octokit = await getInstallationOctokit();
+    const [owner, repo] = repoFullName.split("/");
 
-  return body.slice(index + mention.length).trim() || "Review this pull request";
-};
+    const { data: pr } = await octokit.rest.pulls.get({
+      owner,
+      pull_number: prNumber,
+      repo,
+    });
 
-const startCommand = async (
-  repoFullName: string,
-  prNumber: number,
-  comment: string
-): Promise<void> => {
-  const octokit = await getInstallationOctokit();
-  const [owner, repo] = repoFullName.split("/");
+    const { botWorkflow } = await import("@/lib/review");
 
-  const { data: pr } = await octokit.rest.pulls.get({
-    owner,
-    pull_number: prNumber,
-    repo,
+    await start(botWorkflow, [
+      {
+        baseBranch: pr.base.ref,
+        comment,
+        prBranch: pr.head.ref,
+        prNumber,
+        repoFullName,
+        threadId: thread.id,
+      } satisfies WorkflowParams,
+    ]);
   });
-
-  await start(botWorkflow, [
-    {
-      baseBranch: pr.base.ref,
-      comment,
-      prBranch: pr.head.ref,
-      prNumber,
-      repoFullName,
-    },
-  ]);
 };
 
-export const handleIssueComment = async (payload: {
-  action: string;
-  comment: { body: string; user: { type: string } };
-  issue: { number: number; pull_request?: { url: string } };
-  repository: { full_name: string };
-}): Promise<void> => {
-  if (!shouldHandleComment(payload)) {
-    return;
+export const initBot = (): Chat => {
+  const bot = getBot();
+
+  if (!initialized) {
+    initialized = true;
+    registerHandlers(bot);
   }
 
-  const comment = extractComment(payload.comment.body);
-
-  await startCommand(
-    payload.repository.full_name,
-    payload.issue.number,
-    comment
-  );
+  return bot;
 };
 
 export const handlePullRequest = async (payload: {
@@ -95,29 +65,19 @@ export const handlePullRequest = async (payload: {
     return;
   }
 
+  const repoFullName = payload.repository.full_name;
+  const prNumber = payload.pull_request.number;
+
+  const { botWorkflow } = await import("@/lib/review");
+
   await start(botWorkflow, [
     {
       baseBranch: payload.pull_request.base.ref,
       comment: "Review this pull request",
       prBranch: payload.pull_request.head.ref,
-      prNumber: payload.pull_request.number,
-      repoFullName: payload.repository.full_name,
-    },
+      prNumber,
+      repoFullName,
+      threadId: `github:${repoFullName}:${prNumber}`,
+    } satisfies WorkflowParams,
   ]);
-};
-
-export const verifyWebhookSignature = async (
-  rawBody: string,
-  signature: string
-): Promise<boolean> => {
-  try {
-    const app = getGitHubApp();
-    await app.webhooks.verify(rawBody, signature);
-    return true;
-  } catch (error) {
-    throw new Error(
-      `Webhook signature verification failed: ${parseError(error)}`,
-      { cause: error }
-    );
-  }
 };

@@ -20,17 +20,16 @@ export interface WorkflowParams {
   prBranch: string;
   prNumber: number;
   repoFullName: string;
+  threadId: string;
 }
 
 const postErrorComment = async (
-  repoFullName: string,
-  prNumber: number,
+  threadId: string,
   error: unknown
 ): Promise<void> => {
   try {
     await addPRComment(
-      repoFullName,
-      prNumber,
+      threadId,
       `## Error
 
 An error occurred while processing your request:
@@ -48,13 +47,11 @@ ${parseError(error)}
 };
 
 const denyPushAccess = async (
-  repoFullName: string,
-  prNumber: number,
+  threadId: string,
   reason: string | undefined
 ): Promise<never> => {
   await addPRComment(
-    repoFullName,
-    prNumber,
+    threadId,
     `## Skipped
 
 Unable to access this branch: ${reason}
@@ -92,34 +89,26 @@ const pushAgentChanges = async (
 const runSandboxAgent = async (
   sandboxId: string,
   repoFullName: string,
-  prNumber: number,
   prBranch: string,
   baseBranch: string,
   token: string,
-  comment: string
+  comment: string,
+  threadId: string
 ): Promise<void> => {
   await prepareSandbox(sandboxId, repoFullName, token);
 
   const diff = await getDiff(sandboxId, baseBranch);
-  const agentResult = await runAgent(
-    sandboxId,
-    diff,
-    comment,
-    repoFullName,
-    prNumber
-  );
+  const agentResult = await runAgent(sandboxId, diff, comment, threadId);
 
   if (!agentResult.success) {
-    throw new FatalError(
-      agentResult.errorMessage ?? "Agent failed to run"
-    );
+    throw new FatalError(agentResult.errorMessage ?? "Agent failed to run");
   }
 
   await pushAgentChanges(sandboxId, prBranch);
 };
 
 const executeWorkflow = async (params: WorkflowParams): Promise<void> => {
-  const { baseBranch, comment, prBranch, prNumber, repoFullName } = params;
+  const { baseBranch, comment, prBranch, repoFullName, threadId } = params;
 
   const token = await getGitHubToken();
   const sandboxId = await createSandbox(repoFullName, token, prBranch);
@@ -128,14 +117,14 @@ const executeWorkflow = async (params: WorkflowParams): Promise<void> => {
     await runSandboxAgent(
       sandboxId,
       repoFullName,
-      prNumber,
       prBranch,
       baseBranch,
       token,
-      comment
+      comment,
+      threadId
     );
   } catch (error) {
-    await postErrorComment(repoFullName, prNumber, error);
+    await postErrorComment(threadId, error);
     throw error;
   } finally {
     await stopSandbox(sandboxId);
@@ -151,11 +140,7 @@ export const botWorkflow = async (params: WorkflowParams): Promise<void> => {
   );
 
   if (!pushAccess.canPush) {
-    await denyPushAccess(
-      params.repoFullName,
-      params.prNumber,
-      pushAccess.reason
-    );
+    await denyPushAccess(params.threadId, pushAccess.reason);
   }
 
   await executeWorkflow(params);

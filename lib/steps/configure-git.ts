@@ -20,11 +20,7 @@ const configureRemoteAndIdentity = async (
     "/dev/null",
   ]);
 
-  await sandbox.runCommand("git", [
-    "config",
-    "user.name",
-    "openreview[bot]",
-  ]);
+  await sandbox.runCommand("git", ["config", "user.name", "openreview[bot]"]);
 
   await sandbox.runCommand("git", [
     "config",

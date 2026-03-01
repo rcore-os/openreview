@@ -1,32 +1,53 @@
 import { after, NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import {
-  handleIssueComment,
-  handlePullRequest,
-  verifyWebhookSignature,
-} from "@/lib/bot";
+import { handlePullRequest, initBot } from "@/lib/bot";
+import { getGitHubApp } from "@/lib/github";
 
-export const POST = async (request: NextRequest): Promise<NextResponse> => {
+const handlePullRequestEvent = async (
+  request: NextRequest
+): Promise<NextResponse> => {
   const rawBody = await request.text();
   const signature = request.headers.get("x-hub-signature-256") ?? "";
 
-  await verifyWebhookSignature(rawBody, signature);
+  const app = getGitHubApp();
+  await app.webhooks.verify(rawBody, signature);
 
-  const event = request.headers.get("x-github-event");
-  const payload = JSON.parse(rawBody) as Record<string, unknown>;
+  const payload = JSON.parse(rawBody) as Parameters<
+    typeof handlePullRequest
+  >[0];
 
   after(async () => {
-    if (event === "issue_comment") {
-      await handleIssueComment(
-        payload as Parameters<typeof handleIssueComment>[0]
-      );
-    } else if (event === "pull_request") {
-      await handlePullRequest(
-        payload as Parameters<typeof handlePullRequest>[0]
-      );
-    }
+    await handlePullRequest(payload);
   });
 
   return NextResponse.json({ ok: true });
+};
+
+const handleChatEvent = (request: NextRequest): Promise<NextResponse> => {
+  const bot = initBot();
+  const handler = bot.webhooks.github;
+
+  if (!handler) {
+    return Promise.resolve(
+      NextResponse.json(
+        { error: "GitHub adapter not configured" },
+        { status: 404 }
+      )
+    );
+  }
+
+  return handler(request, {
+    waitUntil: (task) => after(() => task),
+  }) as Promise<NextResponse>;
+};
+
+export const POST = (request: NextRequest): Promise<NextResponse> => {
+  const event = request.headers.get("x-github-event");
+
+  if (event === "pull_request") {
+    return handlePullRequestEvent(request);
+  }
+
+  return handleChatEvent(request);
 };
