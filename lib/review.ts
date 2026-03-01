@@ -5,17 +5,20 @@ import { addPRComment } from "@/lib/steps/add-pr-comment";
 import { checkPushAccess } from "@/lib/steps/check-push-access";
 import { checkoutBranch } from "@/lib/steps/checkout-branch";
 import { cloneRepo } from "@/lib/steps/clone-repo";
+import { commitAndPush } from "@/lib/steps/commit-and-push";
 import { configureGit } from "@/lib/steps/configure-git";
 import { createSandbox } from "@/lib/steps/create-sandbox";
 import { extendSandbox } from "@/lib/steps/extend-sandbox";
 import { getDiff } from "@/lib/steps/get-diff";
 import { getGitHubToken } from "@/lib/steps/get-github-token";
+import { hasUncommittedChanges } from "@/lib/steps/has-uncommitted-changes";
 import { installDependencies } from "@/lib/steps/install-dependencies";
-import { runReview } from "@/lib/steps/run-review";
+import { runAgent } from "@/lib/steps/run-agent";
 import { stopSandbox } from "@/lib/steps/stop-sandbox";
 
-export interface ReviewParams {
+export interface WorkflowParams {
   baseBranch: string;
+  comment: string;
   prBranch: string;
   prNumber: number;
   repoFullName: string;
@@ -30,9 +33,9 @@ const postErrorComment = async (
     await addPRComment(
       repoFullName,
       prNumber,
-      `## Review Failed
+      `## Error
 
-An error occurred while reviewing this PR:
+An error occurred while processing your request:
 
 \`\`\`
 ${parseError(error)}
@@ -54,7 +57,7 @@ const denyPushAccess = async (
   await addPRComment(
     repoFullName,
     prNumber,
-    `## Review Skipped
+    `## Skipped
 
 Unable to access this branch: ${reason}
 
@@ -67,12 +70,10 @@ Please ensure the OpenReview app has access to this repository and branch.
   throw new FatalError(reason ?? "Push access denied");
 };
 
-const runSandboxReview = async (
+const prepareSandbox = async (
   sandboxId: string,
   repoFullName: string,
-  prNumber: number,
   prBranch: string,
-  baseBranch: string,
   token: string
 ): Promise<void> => {
   await cloneRepo(sandboxId, repoFullName, token);
@@ -80,42 +81,66 @@ const runSandboxReview = async (
   await installDependencies(sandboxId);
   await configureGit(sandboxId, repoFullName, token);
   await extendSandbox(sandboxId);
+};
+
+const pushAgentChanges = async (
+  sandboxId: string,
+  prBranch: string
+): Promise<void> => {
+  const changed = await hasUncommittedChanges(sandboxId);
+
+  if (changed) {
+    await commitAndPush(sandboxId, "openreview: apply changes", prBranch);
+  }
+};
+
+const runSandboxAgent = async (
+  sandboxId: string,
+  repoFullName: string,
+  prNumber: number,
+  prBranch: string,
+  baseBranch: string,
+  token: string,
+  comment: string
+): Promise<void> => {
+  await prepareSandbox(sandboxId, repoFullName, prBranch, token);
 
   const diff = await getDiff(sandboxId, baseBranch);
-  const reviewResult = await runReview(sandboxId, diff);
+  const agentResult = await runAgent(sandboxId, diff, comment);
 
-  if (!reviewResult.success) {
+  if (!agentResult.success) {
     throw new FatalError(
-      reviewResult.errorMessage ?? "AI review failed to run"
+      agentResult.errorMessage ?? "Agent failed to run"
     );
   }
+
+  await pushAgentChanges(sandboxId, prBranch);
 
   await addPRComment(
     repoFullName,
     prNumber,
-    `## Code Review
-
-${reviewResult.review}
+    `${agentResult.text}
 
 ---
 *Powered by [OpenReview](https://github.com/haydenbleasel/openreview)*`
   );
 };
 
-const executeReview = async (params: ReviewParams): Promise<void> => {
-  const { baseBranch, prBranch, prNumber, repoFullName } = params;
+const executeWorkflow = async (params: WorkflowParams): Promise<void> => {
+  const { baseBranch, comment, prBranch, prNumber, repoFullName } = params;
 
   const token = await getGitHubToken();
   const sandboxId = await createSandbox();
 
   try {
-    await runSandboxReview(
+    await runSandboxAgent(
       sandboxId,
       repoFullName,
       prNumber,
       prBranch,
       baseBranch,
-      token
+      token,
+      comment
     );
   } catch (error) {
     await postErrorComment(repoFullName, prNumber, error);
@@ -125,7 +150,7 @@ const executeReview = async (params: ReviewParams): Promise<void> => {
   }
 };
 
-export const reviewWorkflow = async (params: ReviewParams): Promise<void> => {
+export const botWorkflow = async (params: WorkflowParams): Promise<void> => {
   "use workflow";
 
   const pushAccess = await checkPushAccess(
@@ -141,5 +166,5 @@ export const reviewWorkflow = async (params: ReviewParams): Promise<void> => {
     );
   }
 
-  await executeReview(params);
+  await executeWorkflow(params);
 };

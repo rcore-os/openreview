@@ -3,7 +3,7 @@ import { start } from "workflow/api";
 
 import { parseError } from "@/lib/error";
 import { getGitHubApp, getInstallationOctokit } from "@/lib/github";
-import { reviewWorkflow } from "@/lib/review";
+import { botWorkflow } from "@/lib/review";
 
 const BOT_NAME = "openreview";
 
@@ -27,9 +27,21 @@ const shouldHandleComment = (payload: {
   return true;
 };
 
-const startReview = async (
+const extractComment = (body: string): string => {
+  const mention = `@${BOT_NAME}`;
+  const index = body.toLowerCase().indexOf(mention);
+
+  if (index === -1) {
+    return body.trim();
+  }
+
+  return body.slice(index + mention.length).trim() || "Review this pull request";
+};
+
+const startCommand = async (
   repoFullName: string,
-  prNumber: number
+  prNumber: number,
+  comment: string
 ): Promise<void> => {
   const octokit = await getInstallationOctokit();
   const [owner, repo] = repoFullName.split("/");
@@ -43,7 +55,7 @@ const startReview = async (
   await octokit.request(
     "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
     {
-      body: "Starting code review...",
+      body: "On it...",
       headers: { "X-GitHub-Api-Version": "2022-11-28" },
       issue_number: prNumber,
       owner,
@@ -51,9 +63,10 @@ const startReview = async (
     }
   );
 
-  await start(reviewWorkflow, [
+  await start(botWorkflow, [
     {
       baseBranch: pr.base.ref,
+      comment,
       prBranch: pr.head.ref,
       prNumber,
       repoFullName,
@@ -71,7 +84,13 @@ export const handleIssueComment = async (payload: {
     return;
   }
 
-  await startReview(payload.repository.full_name, payload.issue.number);
+  const comment = extractComment(payload.comment.body);
+
+  await startCommand(
+    payload.repository.full_name,
+    payload.issue.number,
+    comment
+  );
 };
 
 export const handlePullRequest = async (payload: {
@@ -87,9 +106,10 @@ export const handlePullRequest = async (payload: {
     return;
   }
 
-  await start(reviewWorkflow, [
+  await start(botWorkflow, [
     {
       baseBranch: payload.pull_request.base.ref,
+      comment: "Review this pull request",
       prBranch: payload.pull_request.head.ref,
       prNumber: payload.pull_request.number,
       repoFullName: payload.repository.full_name,
