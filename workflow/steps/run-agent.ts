@@ -2,6 +2,7 @@ import { Sandbox } from "@vercel/sandbox";
 
 import { createAgent } from "@/lib/agent";
 import { parseError } from "@/lib/error";
+import type { ThreadMessage } from "@/workflow";
 
 export interface AgentResult {
   errorMessage?: string;
@@ -11,7 +12,7 @@ export interface AgentResult {
 export const runAgent = async (
   sandboxId: string,
   diff: string,
-  comment: string,
+  threadMessages: ThreadMessage[],
   threadId: string
 ): Promise<AgentResult> => {
   "use step";
@@ -23,10 +24,13 @@ export const runAgent = async (
   });
 
   try {
-    const agent = await createAgent(sandbox, threadId);
+    const agent = await createAgent(sandbox, threadId, diff);
 
     await agent.generate({
-      prompt: `User request: ${comment}\n\nHere is the PR diff:\n\n\`\`\`diff\n${diff}\n\`\`\`\n\nHandle the user's request. Use the tools to explore files, run commands, or make changes as needed. Use the reply tool to post your response.`,
+      messages: threadMessages.map((msg) => ({
+        content: msg.content,
+        role: msg.role,
+      })),
     });
 
     return { success: true };

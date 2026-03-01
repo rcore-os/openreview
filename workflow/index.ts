@@ -15,9 +15,14 @@ import { installDependencies } from "./steps/install-dependencies";
 import { runAgent } from "./steps/run-agent";
 import { stopSandbox } from "./steps/stop-sandbox";
 
+export interface ThreadMessage {
+  content: string;
+  role: "assistant" | "user";
+}
+
 export interface WorkflowParams {
   baseBranch: string;
-  comment: string;
+  messages: ThreadMessage[];
   prBranch: string;
   prNumber: number;
   repoFullName: string;
@@ -27,7 +32,7 @@ export interface WorkflowParams {
 export const botWorkflow = async (params: WorkflowParams): Promise<void> => {
   "use workflow";
 
-  const { baseBranch, comment, prBranch, repoFullName, threadId } = params;
+  const { baseBranch, messages, prBranch, repoFullName, threadId } = params;
 
   const pushAccess = await checkPushAccess(repoFullName, prBranch);
 
@@ -56,7 +61,7 @@ Please ensure the OpenReview app has access to this repository and branch.
     await extendSandbox(sandboxId);
 
     const diff = await getDiff(sandboxId, baseBranch);
-    const agentResult = await runAgent(sandboxId, diff, comment, threadId);
+    const agentResult = await runAgent(sandboxId, diff, messages, threadId);
 
     if (!agentResult.success) {
       throw new FatalError(agentResult.errorMessage ?? "Agent failed to run");

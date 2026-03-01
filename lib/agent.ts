@@ -36,7 +36,13 @@ Based on the user's request, decide what to do. Your capabilities include:
 - Always reply at least once with your findings or actions taken
 - Format replies as markdown
 - Be concise and actionable
-- End every reply with a line break, a horizontal rule, then: *Powered by [OpenReview](https://github.com/haydenbleasel/openreview)*`;
+- End every reply with a line break, a horizontal rule, then: *Powered by [OpenReview](https://github.com/haydenbleasel/openreview)*
+
+## PR Diff for Reference
+
+\`\`\`diff
+{{DIFF}}
+\`\`\``;
 
 const createReplyTool = (threadId: string) => {
   const adapter = bot.getAdapter("github");
@@ -54,11 +60,15 @@ const createReplyTool = (threadId: string) => {
   });
 };
 
-export const createAgent = async (sandbox: Sandbox, threadId: string) => {
+export const createAgent = async (
+  sandbox: Sandbox,
+  threadId: string,
+  diff: string
+) => {
   const { tools: bashTools } = await createBashTool({ sandbox });
 
   return new ToolLoopAgent({
-    instructions,
+    instructions: instructions.replace("{{DIFF}}", diff),
     model: "anthropic/claude-sonnet-4.6",
     stopWhen: stepCountIs(20),
     tools: {

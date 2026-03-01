@@ -8,9 +8,22 @@ import type { Message, Thread } from "chat";
 import { start } from "workflow/api";
 
 import { env } from "@/lib/env";
-import type { WorkflowParams } from "@/workflow";
+import type { ThreadMessage, WorkflowParams } from "@/workflow";
 
 import { getInstallationOctokit } from "./github";
+
+const collectMessages = async (thread: Thread): Promise<ThreadMessage[]> => {
+  const messages: ThreadMessage[] = [];
+
+  for await (const msg of thread.allMessages) {
+    messages.push({
+      content: msg.text,
+      role: msg.author.isMe ? "assistant" : "user",
+    });
+  }
+
+  return messages;
+};
 
 interface ThreadState {
   baseBranch: string;
@@ -38,11 +51,11 @@ export const bot = new Chat({
 });
 
 const handleMention = async (thread: Thread, message: Message) => {
+  const messages = await collectMessages(thread);
   const raw = message.raw as GitHubRawMessage;
 
   const repoFullName = raw.repository.full_name;
   const { prNumber } = raw;
-  const comment = message.text.trim() || "Review this pull request";
 
   const octokit = await getInstallationOctokit();
   const [owner, repo] = repoFullName.split("/");
@@ -65,7 +78,7 @@ const handleMention = async (thread: Thread, message: Message) => {
   await start(botWorkflow, [
     {
       baseBranch: pr.base.ref,
-      comment,
+      messages,
       prBranch: pr.head.ref,
       prNumber,
       repoFullName,
@@ -96,14 +109,14 @@ bot.onReaction([emoji.thumbs_up, emoji.heart], async (event) => {
     return;
   }
 
-  const comment = event.message.text.trim();
+  const messages = await collectMessages(event.thread);
 
   const { botWorkflow } = await import("@/workflow");
 
   await start(botWorkflow, [
     {
       ...threadState,
-      comment,
+      messages,
       threadId: event.thread.id,
     } satisfies WorkflowParams,
   ]);
