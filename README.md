@@ -53,14 +53,14 @@ Generate a private key and webhook secret, then note your App ID and Installatio
 
 Add the following environment variables to your Vercel project:
 
-| Variable | Description |
-| --- | --- |
-| `ANTHROPIC_API_KEY` | Your [Anthropic API key](https://console.anthropic.com/) |
-| `GITHUB_APP_ID` | The ID of your GitHub App |
-| `GITHUB_APP_INSTALLATION_ID` | The installation ID for your repository |
-| `GITHUB_APP_PRIVATE_KEY` | The private key generated for your GitHub App (with `\n` for newlines) |
-| `GITHUB_APP_WEBHOOK_SECRET` | The webhook secret you configured |
-| `REDIS_URL` | (Optional) Redis URL for persistent state. Falls back to in-memory storage |
+| Variable                     | Description                                                                |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`          | Your [Anthropic API key](https://console.anthropic.com/)                   |
+| `GITHUB_APP_ID`              | The ID of your GitHub App                                                  |
+| `GITHUB_APP_INSTALLATION_ID` | The installation ID for your repository                                    |
+| `GITHUB_APP_PRIVATE_KEY`     | The private key generated for your GitHub App (with `\n` for newlines)     |
+| `GITHUB_APP_WEBHOOK_SECRET`  | The webhook secret you configured                                          |
+| `REDIS_URL`                  | (Optional) Redis URL for persistent state. Falls back to in-memory storage |
 
 ### 4. Install the GitHub App
 

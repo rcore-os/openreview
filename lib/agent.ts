@@ -3,7 +3,6 @@ import { DurableAgent } from "@workflow/ai/agent";
 import { tool } from "ai";
 import { z } from "zod";
 
-import { parseError } from "@/lib/error";
 import { addPRComment } from "@/workflow/steps/add-pr-comment";
 
 const instructions = `You are an expert software engineering assistant working inside a sandbox with a git repository checked out on a PR branch.
@@ -145,8 +144,8 @@ const createWriteFileTool = (sandboxId: string) =>
     }),
   });
 
-const createReplyTool = (threadId: string) => {
-  return tool({
+const createReplyTool = (threadId: string) =>
+  tool({
     description:
       "Post a comment on the pull request. Use this to share your findings, ask questions, or report results.",
     execute: async ({ body }) => {
@@ -159,7 +158,6 @@ const createReplyTool = (threadId: string) => {
       body: z.string().describe("The markdown-formatted comment body to post"),
     }),
   });
-};
 
 export const createAgent = (
   sandboxId: string,
