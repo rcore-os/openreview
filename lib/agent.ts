@@ -1,4 +1,5 @@
 import { DurableAgent } from "@workflow/ai/agent";
+import { createZhipu } from "zhipu-ai-provider";
 
 import type { SkillMetadata } from "@/lib/skills";
 import { buildSkillsPrompt } from "@/lib/skills";
@@ -66,7 +67,7 @@ export const createAgent = (
   threadId: string,
   prNumber: number,
   repoFullName: string,
-  skills: SkillMetadata[]
+  skills: SkillMetadata[],
 ) => {
   const skillsPrompt = buildSkillsPrompt(skills);
   const system = [
@@ -79,7 +80,12 @@ export const createAgent = (
     .join("\n\n");
 
   return new DurableAgent({
-    model: "anthropic/claude-sonnet-4.6",
+    model: async () => {
+      "use step";
+      return createZhipu({
+        baseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+      })("glm-5.1");
+    },
     system,
     tools: {
       bash: createBashTool(sandboxId),
