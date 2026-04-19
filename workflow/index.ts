@@ -59,7 +59,7 @@ Please ensure the OpenReview app has access to this repository and branch.
   }
 
   const token = await getGitHubToken();
-  const sandboxId = await createSandbox(repoFullName, token, prBranch);
+  const sandboxId = await createSandbox(repoFullName, token, prNumber);
 
   try {
     await installDependencies(sandboxId);

@@ -18,7 +18,7 @@ export const runAgent = async (
   threadMessages: ThreadMessage[],
   threadId: string,
   prNumber: number,
-  repoFullName: string
+  repoFullName: string,
 ): Promise<AgentResult> => {
   try {
     await startTyping(threadId, "Reviewing...");
@@ -30,7 +30,7 @@ export const runAgent = async (
       threadId,
       prNumber,
       repoFullName,
-      skills
+      skills,
     );
 
     await agent.stream({
@@ -41,8 +41,10 @@ export const runAgent = async (
       })),
       onStepFinish: (step) => {
         console.log(
-          `[agent] step: ${step.usage.inputTokens ?? 0} in / ${step.usage.outputTokens ?? 0} out`
+          `[agent] step: ${step.usage.inputTokens ?? 0} in / ${step.usage.outputTokens ?? 0} out`,
         );
+        console.log(`[agent] [thinking] ${step.reasoningText}`);
+        console.log(`[agent] ${step.text}`);
       },
       prepareStep: ({ messages }) => {
         const trimmed = messages.map((msg) => {

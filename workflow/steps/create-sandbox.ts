@@ -4,10 +4,13 @@ import { parseError } from "@/lib/error";
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
+const getPullRequestHeadRevision = (prNumber: number): string =>
+  `refs/pull/${prNumber}/head`;
+
 export const createSandbox = async (
   repoFullName: string,
   token: string,
-  branch: string
+  prNumber: number
 ): Promise<string> => {
   "use step";
 
@@ -16,7 +19,7 @@ export const createSandbox = async (
       source: {
         depth: 1,
         password: token,
-        revision: branch,
+        revision: getPullRequestHeadRevision(prNumber),
         type: "git",
         url: `https://github.com/${repoFullName}.git`,
         username: "x-access-token",

@@ -35,7 +35,9 @@ const gitPush = async (
   sandbox: Sandbox,
   branchName?: string
 ): Promise<void> => {
-  const args = branchName ? ["push", "origin", branchName] : ["push"];
+  const args = branchName
+    ? ["push", "origin", `HEAD:refs/heads/${branchName}`]
+    : ["push"];
   const result = await sandbox.runCommand("git", args);
 
   if (result.exitCode !== 0) {
